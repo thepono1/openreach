@@ -11,9 +11,12 @@ dependencies = [
     "pillow>=10.0.0",
 ]
 
+[project.scripts]
+openreach = "openreach.cli:main"
+
 [project.optional-dependencies]
-server = ["mcp>=1.0.0"]
-dev = ["pytest>=8.0.0", "pytest-cov>=5.0.0"]
+ocr = ["pytesseract>=0.3.10"]
+dev = ["pytest>=8.0.0", "pytest-cov>=5.0.0", "pytesseract>=0.3.10"]
 
 [build-system]
 requires = ["hatchling"]

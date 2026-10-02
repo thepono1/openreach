@@ -10,7 +10,22 @@ Anthropic's computer-use tool schema (`screenshot`, `left_click`, `type`, `key`,
 
 - `src/openreach/schema.py`: the tool-call contract (action names, params), matching Anthropic's computer-use schema so openreach is a drop-in backend for any harness already speaking it.
 - `src/openreach/backend.py`: the OS automation implementation. Day one: `pyautogui` + `mss`, which genuinely works unmodified on macOS, Windows, and Linux. Native per-OS backends (accessibility-tree grounding, etc.) are a documented extension point, not a blocker to shipping.
-- `src/openreach/server.py`: thin MCP server exposing the schema, so any MCP-speaking harness (Claude Code, Claude Desktop, custom agents) can use openreach directly.
+- `src/openreach/cli.py`: the `openreach` command. Any harness drives the desktop by shelling out to it (`openreach screenshot`, `openreach click 100,200`, `openreach type "hello"`), JSON on stdout, exit code 0/1. No MCP server, no daemon: a plain CLI any process on any OS can call.
+
+## CLI
+
+```
+pip install -e .
+openreach screenshot          # PNG, base64-encoded, on stdout as JSON
+openreach position
+openreach click 100,200
+openreach double-click 100,200
+openreach drag 100,200 300,400
+openreach scroll down --amount 5 --at 100,200
+openreach type "hello world"
+openreach key "cmd+c"
+openreach wait 1.5
+```
 
 ## Testing philosophy
 
