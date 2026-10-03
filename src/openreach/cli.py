@@ -83,10 +83,20 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("type", help="Type literal text")
     p.add_argument("text")
+    p.add_argument(
+        "--expect-app",
+        default=None,
+        help="Refuse to type unless the frontmost app's name contains this substring",
+    )
 
     p = sub.add_parser("key", help='Press a key or chord, e.g. "cmd+c"')
     p.add_argument("keys")
     p.add_argument("--force", action="store_true", help="Allow a destructive combo (quit, lock, log out)")
+    p.add_argument(
+        "--expect-app",
+        default=None,
+        help="Refuse to send unless the frontmost app's name contains this substring",
+    )
 
     p = sub.add_parser("wait", help="Sleep for N seconds")
     p.add_argument("seconds", type=float)
@@ -178,6 +188,16 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 1
         return _run_accessibility_command(ax, cmd, args)
+
+    expect_app = getattr(args, "expect_app", None)
+    if expect_app:
+        from openreach.focus import FocusMismatchError, require_frontmost
+
+        try:
+            require_frontmost(expect_app)
+        except FocusMismatchError as exc:
+            print(json.dumps({"ok": False, "error": str(exc)}))
+            return 1
 
     # The destructive-key gate itself now lives in Backend.execute (the
     # single chokepoint every caller goes through, library or CLI), not

@@ -167,3 +167,25 @@ def test_press_with_no_match_fails_cleanly(capsys) -> None:
     assert payload["ok"] is False
     if sys.platform == "darwin":
         assert "no element matched" in payload["error"]
+
+
+# --- focus guard (--expect-app) ---------------------------------------------
+
+
+def test_expect_app_refuses_type_when_frontmost_does_not_match(capsys) -> None:
+    code, payload = _run(capsys, ["type", "should never land", "--expect-app", "zzz_not_the_real_app_zzz"])
+    assert code == 1
+    assert payload["ok"] is False
+    assert "zzz_not_the_real_app_zzz" in payload["error"]
+
+
+@pytest.mark.live_input
+def test_expect_app_allows_type_when_frontmost_matches(capsys) -> None:
+    from openreach.focus import frontmost_app_name
+
+    name = frontmost_app_name()
+    if not name:
+        pytest.skip("frontmost_app_name() returned nothing on this platform")
+    code, payload = _run(capsys, ["type", "x", "--expect-app", name])
+    assert code == 0
+    assert payload["ok"] is True

@@ -68,8 +68,34 @@ def fresh_notepad():
     if not hwnd:
         proc.terminate()
         pytest.skip("Notepad window never appeared (no interactive desktop session?)")
-    ctypes.windll.user32.SetForegroundWindow(hwnd)
+
+    user32 = ctypes.windll.user32
+    # SetForegroundWindow alone can be silently refused by Windows'
+    # foreground-lock mechanism when called from a background process
+    # (confirmed empirically on windows-latest CI: SendInput succeeded with
+    # no error, but Notepad's edit control stayed empty). AttachThreadInput
+    # is the standard, documented workaround: temporarily share input state
+    # with the target window's thread so this process is allowed to steal
+    # the foreground.
+    target_tid = user32.GetWindowThreadProcessId(hwnd, None)
+    current_tid = ctypes.windll.kernel32.GetCurrentThreadId()
+    user32.AttachThreadInput(current_tid, target_tid, True)
+    try:
+        user32.SetForegroundWindow(hwnd)
+        user32.BringWindowToTop(hwnd)
+        user32.SetActiveWindow(hwnd)
+    finally:
+        user32.AttachThreadInput(current_tid, target_tid, False)
     time.sleep(0.3)
+
+    for _ in range(10):
+        if user32.GetForegroundWindow() == hwnd:
+            break
+        time.sleep(0.1)
+    else:
+        proc.terminate()
+        pytest.skip("could not obtain real keyboard focus for Notepad (CI foreground-lock environment limit)")
+
     yield hwnd
     proc.terminate()
 
