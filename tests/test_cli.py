@@ -198,10 +198,10 @@ def test_expect_app_allows_type_when_frontmost_matches(capsys) -> None:
 def test_click_verify_reports_a_target_and_verified_true_on_macos(capsys) -> None:
     import sys
 
-    from openreach.accessibility import macos
-
     if sys.platform != "darwin":
         pytest.skip("accessibility-backed verification is macOS-only today")
+
+    from openreach.accessibility import macos
 
     el = macos.find(role="AXMenuBarItem")[0]
     x, y = el.center
