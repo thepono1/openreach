@@ -24,4 +24,8 @@ def get_native_input():
         from openreach.input import macos
 
         return macos
+    if sys.platform == "win32":
+        from openreach.input import windows
+
+        return windows
     return None
