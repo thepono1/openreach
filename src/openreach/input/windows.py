@@ -23,6 +23,12 @@ import time
 from ctypes import wintypes
 
 user32 = ctypes.windll.user32  # type: ignore[attr-defined]
+# Explicit argtypes/restype: ctypes' default marshaling of a bare pointer
+# argument can be unreliable on 64-bit Python for this particular API in
+# some interpreter builds; declaring them explicitly is the standard,
+# defensive fix recommended for SendInput specifically.
+user32.SendInput.argtypes = (wintypes.UINT, ctypes.c_void_p, ctypes.c_int)
+user32.SendInput.restype = wintypes.UINT
 
 INPUT_KEYBOARD = 1
 KEYEVENTF_KEYUP = 0x0002
@@ -94,18 +100,46 @@ class UnknownKeyError(KeyError):
 # --- low-level SendInput plumbing -------------------------------------------
 
 
+# ULONG_PTR, not POINTER(ULONG): dwExtraInfo is an integer-sized-as-a-
+# pointer value (almost always 0), never an actual pointer to dereference.
+# Using the wrong ctypes type here was part of the original GetLastError=87
+# failure on real Windows CI.
+_ULONG_PTR = ctypes.c_size_t
+
+
 class _KEYBDINPUT(ctypes.Structure):
     _fields_ = [
         ("wVk", wintypes.WORD),
         ("wScan", wintypes.WORD),
         ("dwFlags", wintypes.DWORD),
         ("time", wintypes.DWORD),
-        ("dwExtraInfo", ctypes.POINTER(wintypes.ULONG)),
+        ("dwExtraInfo", _ULONG_PTR),
     ]
 
 
+class _MOUSEINPUT(ctypes.Structure):
+    _fields_ = [
+        ("dx", wintypes.LONG),
+        ("dy", wintypes.LONG),
+        ("mouseData", wintypes.DWORD),
+        ("dwFlags", wintypes.DWORD),
+        ("time", wintypes.DWORD),
+        ("dwExtraInfo", _ULONG_PTR),
+    ]
+
+
+class _HARDWAREINPUT(ctypes.Structure):
+    _fields_ = [("uMsg", wintypes.DWORD), ("wParamL", wintypes.WORD), ("wParamH", wintypes.WORD)]
+
+
 class _INPUT_UNION(ctypes.Union):
-    _fields_ = [("ki", _KEYBDINPUT)]
+    # Confirmed root cause of GetLastError=87 on real Windows CI: this
+    # union originally only declared `ki`, so ctypes.sizeof(_INPUT) was
+    # smaller than the real Win32 INPUT struct (whose union is sized for
+    # the larger MOUSEINPUT), and SendInput rejected the mismatched
+    # element size. All three members must be present even though only
+    # `ki` is ever used, so the struct size matches what SendInput expects.
+    _fields_ = [("ki", _KEYBDINPUT), ("mi", _MOUSEINPUT), ("hi", _HARDWAREINPUT)]
 
 
 class _INPUT(ctypes.Structure):
@@ -120,7 +154,7 @@ def _send_key_event(vk: int, key_up: bool, unicode_char: str | None = None) -> N
         flags |= KEYEVENTF_UNICODE
         wvk = 0
         wscan = ord(unicode_char)
-    inp = _INPUT(type=INPUT_KEYBOARD, union=_INPUT_UNION(ki=_KEYBDINPUT(wvk, wscan, flags, 0, None)))
+    inp = _INPUT(type=INPUT_KEYBOARD, union=_INPUT_UNION(ki=_KEYBDINPUT(wvk, wscan, flags, 0, 0)))
     sent = user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(_INPUT))
     if sent != 1:
         raise OSError(f"SendInput failed (GetLastError={ctypes.GetLastError()})")

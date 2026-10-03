@@ -59,6 +59,27 @@ exact-matches title (same #8 discipline as OCR `find_text`), and `press` refuses
 Windows (UI Automation) and Linux (AT-SPI2) are not implemented; `get_accessibility_backend()`
 returns `None` there and the CLI reports that cleanly rather than crashing.
 
+## Closed this session, round 4: Windows and Linux native keyboard backends
+
+`openreach/input/windows.py` (SendInput via ctypes, stdlib only) and `openreach/input/linux.py`
+(XTEST via python-xlib) mirror macOS's `press_chord`/`type_text` shape, wired into `Backend`
+generically (no platform branching needed in `backend.py`, already dispatched through
+`get_native_input()`).
+
+Honest limitation on both: **neither was verified interactively by a human this session.** No
+Windows or Linux desktop was available; both were written against documented APIs (Win32
+`SendInput`, X11 XTEST) and reviewed, not watched passing with real eyes the way macOS's
+`AXSelectedTextRange` checks and direct HID-state reads were. CI (`windows-latest`, `ubuntu-latest`
+under Xvfb) is the only verification channel, and that's a materially weaker guarantee than the
+macOS backend has. Windows' live test drives real Notepad and reads back via `WM_GETTEXT` (close to
+the macOS rigor); Linux's live test is weaker still, a connection/keycode smoke test plus
+non-raising chord presses, with no real application's text verified, because adding a text-readback
+path on Linux would mean either an AT-SPI dependency this module doesn't otherwise need or a
+custom X11 app, and that tradeoff wasn't made this session. Wayland is explicitly out of scope for
+`linux.py` (XTEST has no Wayland equivalent); the honest options there, `ydotool` (needs root/a
+uinput group) or the libei/xdg-desktop-portal RemoteDesktop path (interactive consent prompt), are
+different enough in shape to need their own module.
+
 ## Open, named honestly rather than papered over
 
 | Gap | Why it's not closed | Mirroir's equivalent |
