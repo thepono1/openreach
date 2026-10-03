@@ -86,6 +86,15 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("drag", help="Drag from X,Y to X,Y")
     p.add_argument("start", type=_parse_xy)
     p.add_argument("end", type=_parse_xy)
+    p.add_argument(
+        "--verify",
+        action="store_true",
+        help=(
+            "macOS only: read the real accessibility element at the start point before "
+            "dragging, then check what element is under the end point afterward (the element "
+            "actually moved there, not just that the pixel math looked right)."
+        ),
+    )
 
     p = sub.add_parser("scroll", help="Scroll at an optional X,Y")
     p.add_argument("direction", choices=["up", "down", "left", "right"])
@@ -213,6 +222,9 @@ def main(argv: list[str] | None = None) -> int:
     if cmd == "click" and getattr(args, "verify", False):
         return _run_verified_click(args, log_dir)
 
+    if cmd == "drag" and getattr(args, "verify", False):
+        return _run_verified_drag(args, log_dir)
+
     # The destructive-key gate itself now lives in Backend.execute (the
     # single chokepoint every caller goes through, library or CLI), not
     # here. This keeps _build_action's force flag passed straight through.
@@ -254,6 +266,53 @@ def _run_verified_click(args: argparse.Namespace, log_dir: str | None) -> int:
     }
     if log_dir:
         _write_artifact(log_dir, "click", payload)
+    print(json.dumps(payload))
+    return 0 if result.ok else 1
+
+
+def _run_verified_drag(args: argparse.Namespace, log_dir: str | None) -> int:
+    """Drag with confirmation that the thing picked up at the start point
+    is the same thing now found at the end point, not just that pyautogui's
+    dragTo call returned without error. Compares role+title only (not
+    bounds, unlike verify_click_target): the dragged element's own
+    position attribute is stale the moment the drag starts, since it was
+    read before the move, so a bounds check against it would be
+    comparing against where the element USED to be, not a real check.
+    macOS only; 'verified: null' elsewhere, same honesty convention as
+    click --verify.
+    """
+    backend = Backend()
+    sx, sy = args.start
+    ex, ey = args.end
+
+    ax = get_accessibility_backend()
+    if ax is None:
+        result = backend.execute(
+            Action(name=ActionName.LEFT_CLICK_DRAG, start_coordinate=(sx, sy), coordinate=(ex, ey))
+        )
+        payload = {"ok": result.ok, "error": result.error, "position": [ex, ey], "verified": None}
+        if log_dir:
+            _write_artifact(log_dir, "drag", payload)
+        print(json.dumps(payload))
+        return 0 if result.ok else 1
+
+    dragged = ax.element_at(sx, sy)
+    result = backend.execute(Action(name=ActionName.LEFT_CLICK_DRAG, start_coordinate=(sx, sy), coordinate=(ex, ey)))
+    landed = ax.element_at(ex, ey)
+    verified = (
+        dragged is not None and landed is not None and landed.role == dragged.role and landed.title == dragged.title
+    )
+
+    payload = {
+        "ok": result.ok,
+        "error": result.error,
+        "position": [ex, ey],
+        "dragged": _element_json(dragged) if dragged is not None else None,
+        "landed": _element_json(landed) if landed is not None else None,
+        "verified": verified,
+    }
+    if log_dir:
+        _write_artifact(log_dir, "drag", payload)
     print(json.dumps(payload))
     return 0 if result.ok else 1
 

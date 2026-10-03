@@ -220,3 +220,75 @@ def test_click_verify_without_accessibility_backend_reports_verified_none(capsys
     assert code == 0
     assert payload["ok"] is True
     assert payload["verified"] is None
+
+
+# --- cursor-accuracy: drag --verify -----------------------------------------
+
+
+class FakeElement:
+    """Minimal stand-in for accessibility.macos.AXElement, shaped to match
+    every field _element_json reads, so these CLI-logic tests don't need a
+    real accessibility backend (and don't depend on a browser or app
+    exposing a drag target to the accessibility tree, which isn't
+    guaranteed for an arbitrary draggable <div>).
+    """
+
+    def __init__(self, role: str, title: str) -> None:
+        self.role = role
+        self.title = title
+        self.value = ""
+        self.position = None
+        self.size = None
+        self.enabled = True
+        self.actions: list[str] = []
+
+    @property
+    def center(self):
+        return None
+
+
+def test_drag_verify_without_accessibility_backend_reports_verified_none(capsys, monkeypatch) -> None:
+    import openreach.cli as cli_module
+
+    monkeypatch.setattr(cli_module, "get_accessibility_backend", lambda: None)
+    code, payload = _run(capsys, ["drag", "100,100", "200,200", "--verify"])
+    assert code == 0
+    assert payload["ok"] is True
+    assert payload["verified"] is None
+
+
+def test_drag_verify_true_when_the_same_element_is_found_at_the_end_point(capsys, monkeypatch) -> None:
+    import openreach.cli as cli_module
+
+    class FakeAx:
+        def element_at(self, x, y):
+            return FakeElement("AXImage", "box-1")
+
+    monkeypatch.setattr(cli_module, "get_accessibility_backend", lambda: FakeAx())
+    code, payload = _run(capsys, ["drag", "100,100", "200,200", "--verify"])
+    assert code == 0
+    assert payload["verified"] is True
+    assert payload["dragged"]["title"] == "box-1"
+    assert payload["landed"]["title"] == "box-1"
+
+
+def test_drag_verify_false_when_a_different_element_is_found_at_the_end_point(capsys, monkeypatch) -> None:
+    import openreach.cli as cli_module
+
+    class FakeAx:
+        def __init__(self):
+            self.calls = 0
+
+        def element_at(self, x, y):
+            self.calls += 1
+            # first call (start point, before drag) sees the dragged box;
+            # second call (end point, after drag) sees something else,
+            # e.g. the drag silently failed and nothing moved there.
+            return FakeElement("AXImage", "box-1") if self.calls == 1 else FakeElement("AXImage", "box-2")
+
+    monkeypatch.setattr(cli_module, "get_accessibility_backend", lambda: FakeAx())
+    code, payload = _run(capsys, ["drag", "100,100", "200,200", "--verify"])
+    assert code == 0
+    assert payload["verified"] is False
+    assert payload["dragged"]["title"] == "box-1"
+    assert payload["landed"]["title"] == "box-2"
