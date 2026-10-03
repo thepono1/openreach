@@ -13,7 +13,7 @@ The deeper goal: Claude-in-Chrome's real advantage isn't vision, it's that a bro
 - `src/openreach/schema.py`: the tool-call contract (action names, params), matching Anthropic's computer-use schema.
 - `src/openreach/backend.py`: pixel-level actions (screenshot via `mss`, mouse via `pyautogui`). Keyboard actions (`type`/`key`) route through a native per-OS backend when one exists, falling back to `pyautogui` otherwise; the destructive-key safety gate lives here too, so every caller (library or CLI) goes through it.
 - `src/openreach/input/`: native keyboard injection per OS. `macos.py` (Quartz `CGEvent`, verified live), `windows.py` (`SendInput` via ctypes), `linux.py` (XTEST via `python-xlib`, X11 only). Why native instead of `pyautogui`'s own chord handling: `pyautogui.hotkey()` on macOS has a real, confirmed bug (modifier flags not set atomically on the key event, so a chord can race and misfire as a plain keypress). See `GAP_ANALYSIS.md`.
-- `src/openreach/accessibility/`: the real accessibility tree. `macos.py` (`AXUIElement`) reads roles/titles/bounds/actions and invokes elements directly via `AXPress`, no coordinate guessing. Windows (UI Automation) and Linux (AT-SPI2) are documented, not yet built.
+- `src/openreach/accessibility/`: the real accessibility tree. `macos.py` (`AXUIElement`) reads roles/titles/bounds/actions and invokes elements directly via `AXPress`, no coordinate guessing. It also has the click-accuracy primitives `element_at(x, y)` and `verify_click_target(x, y, expected)`, read what's really under a screen point so a click or drag can be confirmed, not just trusted; the CLI exposes these as `click --verify` and `drag --verify`. Windows (UI Automation) and Linux (AT-SPI2) are documented, not yet built.
 - `src/openreach/grounding.py`: OCR-based `find_text`/`wait_for_text` (pytesseract) as the fallback for apps with no usable accessibility tree, or on platforms without a native accessibility backend yet.
 - `src/openreach/focus.py`: pre-action focus verification (`--expect-app`), refusing to send input when the frontmost app doesn't match what the caller expected.
 - `src/openreach/safety.py`: fail-closed guard on destructive key combos (quit, force-quit, lock, log out).
@@ -27,8 +27,10 @@ pip install -e ".[dev]"   # add [ocr] for OCR grounding
 openreach screenshot                    # PNG, base64-encoded, on stdout as JSON
 openreach position
 openreach click 100,200
+openreach click 100,200 --verify         # macOS: confirms the real element at that point, not a trusted guess
 openreach double-click 100,200
 openreach drag 100,200 300,400
+openreach drag 100,200 300,400 --verify  # macOS: confirms the element picked up is the one that landed
 openreach scroll down --amount 5 --at 100,200
 openreach type "hello world" --expect-app "TextEdit"
 openreach key "cmd+c"
