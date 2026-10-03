@@ -15,9 +15,18 @@ from openreach.focus import FocusMismatchError, frontmost_app_name, require_fron
 
 def test_frontmost_app_name_returns_something_real() -> None:
     name = frontmost_app_name()
-    if sys.platform in ("darwin", "win32") or sys.platform.startswith("linux"):
+    if sys.platform in ("darwin", "win32"):
         assert name is not None
         assert len(name) > 0
+    elif sys.platform.startswith("linux"):
+        # _NET_ACTIVE_WINDOW is a window-manager convention, not a core X11
+        # feature. Xvfb (what CI's ubuntu-latest leg uses) runs no window
+        # manager, so None here is the correct, honest answer, not a bug:
+        # confirmed live via CI, not assumed. A real desktop with a WM
+        # should return a real name; this test only enforces "didn't
+        # crash and returned a sane type" when that's true.
+        if name is not None:
+            assert len(name) > 0
 
 
 def test_require_frontmost_raises_for_an_app_that_is_not_focused() -> None:
