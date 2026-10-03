@@ -43,12 +43,29 @@ suite, not assumed clean.
 Windows and Linux don't have a native backend yet; they still use pyautogui's hotkey/typewrite,
 which may carry the same or a different class of this bug, unverified.
 
+## Closed this session, round 3: macOS accessibility-tree backend (the row-1 gap)
+
+`openreach/accessibility/macos.py`, fresh-written (not ported from autopilot; see the explicit
+licensing decision above) using `AXUIElement`. `openreach tree`/`find`/`press` read the real
+accessibility tree (role, title, exact bounds, available actions) and invoke elements directly via
+`AXPress`, no coordinate guessing. Verified live against TextEdit's Bold checkbox: `find` located it
+by role+title, `press` called `AXUIElementPerformAction(ref, "AXPress")`, and the result was
+confirmed by reading `AXValue` back (0 to 1), not by trusting the call returning without error. This
+is the exact discipline logic-mcp's docs call out as necessary: an app can report success on
+`AXPress` while silently ignoring it, so only a post-action read counts as proof. `find` never
+exact-matches title (same #8 discipline as OCR `find_text`), and `press` refuses an ambiguous match
+(more than one element) rather than guessing which one.
+
+Windows (UI Automation) and Linux (AT-SPI2) are not implemented; `get_accessibility_backend()`
+returns `None` there and the CLI reports that cleanly rather than crashing.
+
 ## Open, named honestly rather than papered over
 
 | Gap | Why it's not closed | Mirroir's equivalent |
 |---|---|---|
-| No accessibility-tree / structured element access | pyautogui has no AX-tree reader; this is a multi-day per-OS project (AXUIElement on macOS, UIAutomation on Windows, AT-SPI2 on Linux). Screenshot + OCR is the only perception channel today, same ceiling mirroir hits on the mirrored surface. A dual-model (Opus + Codex) planning pass produced a full implementation plan for this; not yet built. | Same ceiling: "the mirrored surface exposes zero child accessibility elements." |
+| Windows/Linux accessibility-tree backend | Only macOS is implemented. Windows needs UI Automation (comtypes or pywinauto per the dual-model plan); Linux needs AT-SPI2 (PyGObject `Atspi`). Neither can be verified live from this Mac; CI is the only check. | Same ceiling: "the mirrored surface exposes zero child accessibility elements." |
 | Windows/Linux keyboard chord reliability | Only macOS has a native input backend; Windows/Linux still use pyautogui's hotkey/typewrite, unverified for the same class of bug found and fixed on macOS this session. | N/A |
+| No ref persistence across CLI calls | `tree`/`find`/`press` re-walk the tree every invocation (no session, no cached element handles). Correct and simple, but means a long flow re-walks a complex app's tree repeatedly. The dual-model plan's phase-6 `serve` daemon is the fix if this proves too slow in practice; not measured yet. | N/A |
 | No focus/settle verification before acting | Live testing repeatedly typed into the wrong window because nothing checked the target app was actually frontmost first. Planned (`focus.py`, a pre-action gate) but not built yet. | mirroir's #9, #17, #18: "ready is a claim, the screenshot is the evidence." |
 | No deterministic skill/replay format | openreach is a primitive-level CLI, one command per call; there is no flow-recording or compiled-replay layer. | mirroir has one, and its own data shows compiled replay is a **regression** (0/5 vs 5/5), so this is deliberately not ported. |
 | No screen-classification before grounding | `find_text` has no concept of "is this an icon grid vs a toolbar" the way mirroir's tap-offset heuristic does; openreach does not apply positional heuristics at all, so this class of bug (#4) does not exist here, but neither does the convenience it buys. | N/A, intentionally not replicated. |

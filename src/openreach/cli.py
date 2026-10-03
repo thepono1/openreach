@@ -19,6 +19,7 @@ import sys
 import time
 from pathlib import Path
 
+from openreach.accessibility import get_accessibility_backend
 from openreach.backend import Backend
 from openreach.grounding import find_text, wait_for_text
 from openreach.schema import Action, ActionName, ActionResult
@@ -99,6 +100,21 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--timeout", type=float, default=15.0)
     p.add_argument("--min-confidence", type=float, default=60.0)
 
+    p = sub.add_parser("tree", help="Dump the accessibility tree of the frontmost app")
+    p.add_argument("--max-depth", type=int, default=15)
+    p.add_argument("--max-nodes", type=int, default=2000)
+
+    p = sub.add_parser("find", help="Find accessibility elements by role and/or title substring")
+    p.add_argument("--role", default=None)
+    p.add_argument("--title", default=None, help="Case-insensitive substring match")
+
+    p = sub.add_parser(
+        "press",
+        help="Find exactly one element by role/title and invoke it directly (AXPress), no coordinate guessing",
+    )
+    p.add_argument("--role", default=None)
+    p.add_argument("--title", default=None)
+
     return parser
 
 
@@ -146,12 +162,82 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(payload))
         return 0 if result.ok else 1
 
+    if cmd in ("tree", "find", "press"):
+        ax = get_accessibility_backend()
+        if ax is None:
+            print(json.dumps({"ok": False, "error": "no accessibility backend for this platform yet"}))
+            return 1
+        if not ax.is_trusted():
+            print(
+                json.dumps(
+                    {
+                        "ok": False,
+                        "error": "process is not Accessibility-trusted (System Settings > Privacy & Security > Accessibility)",
+                    }
+                )
+            )
+            return 1
+        return _run_accessibility_command(ax, cmd, args)
+
     # The destructive-key gate itself now lives in Backend.execute (the
     # single chokepoint every caller goes through, library or CLI), not
     # here. This keeps _build_action's force flag passed straight through.
     action = _build_action(args)
     result = Backend().execute(action)
     return _emit(result, log_dir=log_dir, action_name=cmd)
+
+
+def _element_json(e) -> dict:
+    return {
+        "role": e.role,
+        "title": e.title,
+        "value": e.value,
+        "position": list(e.position) if e.position else None,
+        "size": list(e.size) if e.size else None,
+        "center": list(e.center) if e.center else None,
+        "enabled": e.enabled,
+        "actions": e.actions,
+    }
+
+
+def _run_accessibility_command(ax, cmd: str, args: argparse.Namespace) -> int:
+    if cmd == "tree":
+        elements, truncated = ax.walk_tree(max_depth=args.max_depth, max_nodes=args.max_nodes)
+        payload = {"ok": True, "truncated": truncated, "elements": [_element_json(e) for e in elements]}
+        print(json.dumps(payload))
+        return 0
+
+    if cmd == "find":
+        elements = ax.find(role=args.role, title_contains=args.title)
+        payload = {"ok": True, "elements": [_element_json(e) for e in elements]}
+        print(json.dumps(payload))
+        return 0
+
+    if cmd == "press":
+        matches = ax.find(role=args.role, title_contains=args.title)
+        if len(matches) == 0:
+            print(json.dumps({"ok": False, "error": "no element matched role/title"}))
+            return 1
+        if len(matches) > 1:
+            print(
+                json.dumps(
+                    {
+                        "ok": False,
+                        "error": f"ambiguous: {len(matches)} elements matched; narrow --role/--title to exactly one",
+                        "elements": [_element_json(e) for e in matches],
+                    }
+                )
+            )
+            return 1
+        try:
+            ax.press(matches[0])
+        except Exception as exc:  # noqa: BLE001 - uniform result shape at the boundary
+            print(json.dumps({"ok": False, "error": f"{type(exc).__name__}: {exc}"}))
+            return 1
+        print(json.dumps({"ok": True, "pressed": _element_json(matches[0])}))
+        return 0
+
+    raise ValueError(f"unhandled accessibility command: {cmd}")
 
 
 def _build_action(args: argparse.Namespace) -> Action:

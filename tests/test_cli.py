@@ -141,3 +141,29 @@ def test_wait_for_times_out_cleanly_on_text_that_will_never_appear(capsys) -> No
     assert code == 1
     assert payload["ok"] is False
     assert "error" in payload
+
+
+# --- accessibility: tree / find / press -------------------------------------
+
+
+def test_find_command_runs_and_returns_json(capsys) -> None:
+    import sys
+
+    code, payload = _run(capsys, ["find", "--role", "AXWindow"])
+    assert "ok" in payload
+    if sys.platform != "darwin":
+        assert payload["ok"] is False
+        assert "accessibility backend" in payload["error"]
+    else:
+        assert payload["ok"] is True
+        assert "elements" in payload
+
+
+def test_press_with_no_match_fails_cleanly(capsys) -> None:
+    import sys
+
+    code, payload = _run(capsys, ["press", "--title", "zzz_definitely_not_a_real_element_zzz"])
+    assert code == 1
+    assert payload["ok"] is False
+    if sys.platform == "darwin":
+        assert "no element matched" in payload["error"]
