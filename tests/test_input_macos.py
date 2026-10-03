@@ -15,8 +15,8 @@ import pytest
 pytestmark = pytest.mark.skipif(sys.platform != "darwin", reason="macOS-only native backend")
 
 
-def _osascript(script: str) -> str:
-    result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=10)
+def _osascript(script: str, timeout: float = 10) -> str:
+    result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=timeout)
     return result.stdout.strip()
 
 
@@ -81,7 +81,19 @@ def test_a_stuck_modifier_is_cleared_before_typing() -> None:
 
 @pytest.fixture
 def fresh_textedit_document():
-    _osascript('tell application "TextEdit" to make new document')
+    # Hosted CI runners (confirmed on GitHub's macos-latest) have no
+    # logged-in GUI session capable of launching and driving TextEdit via
+    # AppleScript/Accessibility: the call hangs rather than erroring, which
+    # is exactly the open risk the architecture plan flagged as unverified.
+    # Skip cleanly here instead of hanging the whole suite; this is an
+    # environment limitation, not evidence the feature is broken (it's
+    # proven working against a real desktop in test_input_macos.py's own
+    # manual verification this session, and the pure chord-parsing tests
+    # above still run everywhere).
+    try:
+        _osascript('tell application "TextEdit" to make new document', timeout=5)
+    except subprocess.TimeoutExpired:
+        pytest.skip("no GUI session available to drive TextEdit (expected on a hosted CI runner)")
     _osascript('tell application "TextEdit" to activate')
     import time
 
