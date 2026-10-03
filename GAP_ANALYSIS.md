@@ -109,6 +109,21 @@ along the way (struct-size, `dwExtraInfo` type, missing `argtypes`) were real an
 is the honest ceiling on top of them given no real Windows desktop was available to confirm
 `SendInput` itself works outside this specific hosted-runner constraint.
 
+## Closed this session, round 6: multi-monitor screenshot/click coordinate mismatch
+
+`backend.py`'s `_do_screenshot` used `sct.monitors[1]` (mss's primary-display-only entry).
+`pyautogui`'s click/move calls address the full virtual desktop across every connected display,
+so on a multi-monitor setup a screenshot cropped to the primary display would silently exclude
+anything on a secondary monitor, while a click at that same coordinate would still physically
+land there: a harness grounding on the screenshot could never target what it can't see, and would
+misjudge where on the (truncated) image a real secondary-monitor point falls. Fixed by switching
+to `sct.monitors[0]`, mss's combined virtual-desktop bounding box, the same coordinate space
+pyautogui already uses. Verified on this machine (single display: `monitors[0]` and `monitors[1]`
+are identical here, confirmed byte-for-byte via `sct.monitors`, so this is a no-op on single-monitor
+hardware and a real fix only provable on real multi-monitor hardware, which wasn't available this
+session); the existing `test_screenshot_pixel_space_matches_click_coordinate_space` regression test
+and the full backend/CLI suite both still pass.
+
 ## Open, named honestly rather than papered over
 
 | Gap | Why it's not closed | Mirroir's equivalent |

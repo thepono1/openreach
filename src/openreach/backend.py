@@ -56,7 +56,18 @@ class Backend:
 
     def _do_screenshot(self, action: Action) -> ActionResult:
         with mss.MSS() as sct:
-            monitor = sct.monitors[1]
+            # monitors[0] is mss's virtual bounding box spanning every
+            # connected display, in the same coordinate space pyautogui's
+            # click/move calls already use. monitors[1] is only the
+            # primary display: on a multi-monitor setup that silently
+            # crops the screenshot to one screen while clicks still
+            # address the full virtual desktop, so a point a harness
+            # grounded on a secondary monitor would never appear in the
+            # image it reasoned from. This is the same failure *class* as
+            # the pixel-vs-click coordinate-space bug already guarded by
+            # test_screenshot_pixel_space_matches_click_coordinate_space,
+            # just triggered by monitor count instead of DPI scaling.
+            monitor = sct.monitors[0]
             raw = sct.grab(monitor)
             img = Image.frombytes("RGB", raw.size, raw.bgra, "raw", "BGRX")
             buf = io.BytesIO()
