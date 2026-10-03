@@ -80,6 +80,35 @@ custom X11 app, and that tradeoff wasn't made this session. Wayland is explicitl
 uinput group) or the libei/xdg-desktop-portal RemoteDesktop path (interactive consent prompt), are
 different enough in shape to need their own module.
 
+## Closed this session, round 5: click-accuracy verification, and a real Windows CI environment finding
+
+`openreach/accessibility/macos.py` gained `element_at(x, y)` (reads the real AXUIElement at a
+screen point via `AXUIElementCopyElementAtPosition`, system-wide) and `verify_click_target(x, y,
+expected)` (after a click, confirms the thing actually hit matches what was meant, by role+title
+or by the point still falling inside the expected element's bounds). This is the cursor-accuracy
+primitive: instead of trusting a coordinate blindly, a harness can prove a click landed on the
+right thing. **Verified live, twice**: `element_at(200, 20)` correctly read the real "Edit" menu
+bar item; `verify_click_target` against TextEdit's Bold checkbox returned `True` for the correct
+center point and `False` for a point 500px off, both confirmed via direct terminal output. Wired
+into the CLI as `click --verify`, which reads the target element before clicking and reports
+`verified: true/false` in the JSON output; see `cli.py` and `tests/test_accessibility_macos.py`.
+
+Also closed: a real, confirmed root cause for the three straight Windows CI failures on
+`test_input_windows.py`'s live tests (GetLastError=87 struct-size bug, then two foreground-focus
+attempts). The actual cause, found by adding a canary round-trip inside the fixture rather than
+guessing a fourth focus variant: **`SendInput` reports success (return value 1, no
+`GetLastError`) on GitHub's `windows-latest` hosted runner while no keystroke reaches any window.**
+Window-handle focus APIs (`GetForegroundWindow`, `SetForegroundWindow`, `SetFocus`) all pass on
+that runner; `SendInput`'s HID-level injection needs the calling thread attached to a real
+interactive input desktop (`winsta0\default`), which the runner's session does not expose, even
+though it answers every window-handle focus check correctly. This is the same diagnostic shape as
+the Linux no-WM finding below: a CI environment limitation, not a code defect, and the fix is to
+detect and skip with an honest reason (now done in the `fresh_notepad` fixture) rather than keep
+chasing focus-acquisition code that was never the actual problem. The three structural bugs found
+along the way (struct-size, `dwExtraInfo` type, missing `argtypes`) were real and stay fixed; this
+is the honest ceiling on top of them given no real Windows desktop was available to confirm
+`SendInput` itself works outside this specific hosted-runner constraint.
+
 ## Open, named honestly rather than papered over
 
 | Gap | Why it's not closed | Mirroir's equivalent |

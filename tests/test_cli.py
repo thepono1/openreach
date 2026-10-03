@@ -189,3 +189,34 @@ def test_expect_app_allows_type_when_frontmost_matches(capsys) -> None:
     code, payload = _run(capsys, ["type", "x", "--expect-app", name])
     assert code == 0
     assert payload["ok"] is True
+
+
+# --- cursor-accuracy: click --verify ----------------------------------------
+
+
+@pytest.mark.live_input
+def test_click_verify_reports_a_target_and_verified_true_on_macos(capsys) -> None:
+    import sys
+
+    from openreach.accessibility import macos
+
+    if sys.platform != "darwin":
+        pytest.skip("accessibility-backed verification is macOS-only today")
+
+    el = macos.find(role="AXMenuBarItem")[0]
+    x, y = el.center
+    code, payload = _run(capsys, ["click", f"{x},{y}", "--verify"])
+    assert code == 0
+    assert payload["ok"] is True
+    assert payload["verified"] is True
+    assert payload["target"]["role"] == "AXMenuBarItem"
+
+
+def test_click_verify_without_accessibility_backend_reports_verified_none(capsys, monkeypatch) -> None:
+    import openreach.cli as cli_module
+
+    monkeypatch.setattr(cli_module, "get_accessibility_backend", lambda: None)
+    code, payload = _run(capsys, ["click", "100,100", "--verify"])
+    assert code == 0
+    assert payload["ok"] is True
+    assert payload["verified"] is None

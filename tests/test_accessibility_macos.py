@@ -91,3 +91,46 @@ def test_press_raises_when_element_has_no_press_action(fresh_textedit_document) 
 
     with pytest.raises(macos.AccessibilityError):
         macos.press(no_press[0])
+
+
+# --- cursor-accuracy primitives: element_at / verify_click_target ----------
+
+
+@pytest.mark.live_input
+def test_element_at_finds_the_bold_checkbox_at_its_own_center(fresh_textedit_document) -> None:
+    from openreach.accessibility import macos
+
+    expected = macos.find(role="AXCheckBox", title_contains="bold")[0]
+    x, y = expected.center
+
+    actual = macos.element_at(x, y)
+    assert actual is not None
+    assert actual.role == "AXCheckBox"
+    assert "bold" in actual.title.lower()
+
+
+def test_element_at_returns_none_for_a_point_with_nothing_there() -> None:
+    from openreach.accessibility import macos
+
+    # Far off-screen; no real display reaches these coordinates.
+    assert macos.element_at(50000, 50000) is None
+
+
+@pytest.mark.live_input
+def test_verify_click_target_true_for_the_correct_point(fresh_textedit_document) -> None:
+    from openreach.accessibility import macos
+
+    expected = macos.find(role="AXCheckBox", title_contains="bold")[0]
+    x, y = expected.center
+
+    assert macos.verify_click_target(x, y, expected) is True
+
+
+@pytest.mark.live_input
+def test_verify_click_target_false_for_a_point_far_from_the_target(fresh_textedit_document) -> None:
+    from openreach.accessibility import macos
+
+    expected = macos.find(role="AXCheckBox", title_contains="bold")[0]
+    x, y = expected.center
+
+    assert macos.verify_click_target(x + 500, y + 500, expected) is False

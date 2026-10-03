@@ -197,3 +197,48 @@ def set_value(element: AXElement, value: str) -> None:
     err = AX.AXUIElementSetAttributeValue(element._ref, AX.kAXValueAttribute, value)
     if err != 0:
         raise AccessibilityError(f"AXUIElementSetAttributeValue refused (AXError {err})")
+
+
+def element_at(x: int, y: int) -> AXElement | None:
+    """What is actually under this screen point, read from the OS, not
+    guessed. This is the cursor-accuracy primitive: a harness can click
+    (x, y), then call this to confirm the thing it hit is the thing it
+    meant to hit, instead of trusting the coordinate blindly. Uses the
+    system-wide element, so it works across app boundaries (unlike find(),
+    which is scoped to one app's tree).
+
+    Returns None if there's nothing there (e.g. empty desktop) or the
+    system call itself fails; the two aren't distinguished because a
+    harness checking "what did I actually hit" treats both as "nothing
+    identifiable", not as different error conditions worth separate
+    handling.
+    """
+    system_wide = AX.AXUIElementCreateSystemWide()
+    err, ref = AX.AXUIElementCopyElementAtPosition(system_wide, float(x), float(y), None)
+    if err != 0 or ref is None:
+        return None
+    return _element_from_ref(ref)
+
+
+def verify_click_target(x: int, y: int, expected: AXElement, tolerance_px: int = 2) -> bool:
+    """After clicking (x, y) meant to hit `expected`, confirm it actually
+    did: read what's really at that point now and compare role, title, and
+    that the point still falls within the expected element's own bounds
+    (within `tolerance_px`, to absorb integer rounding, not real drift).
+    False means the click likely landed on the wrong thing, for example
+    because the UI shifted between grounding and clicking, exactly the
+    stale-coordinate failure class a pure screenshot/OCR approach can't
+    detect at all.
+    """
+    actual = element_at(x, y)
+    if actual is None:
+        return False
+    if actual.role == expected.role and actual.title == expected.title:
+        return True
+    if expected.position is not None and expected.size is not None:
+        ex, ey = expected.position
+        ew, eh = expected.size
+        return (ex - tolerance_px) <= x <= (ex + ew + tolerance_px) and (ey - tolerance_px) <= y <= (
+            ey + eh + tolerance_px
+        )
+    return False

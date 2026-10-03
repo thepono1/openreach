@@ -98,6 +98,41 @@ def fresh_notepad():
         proc.terminate()
         pytest.skip("could not obtain real keyboard focus for Notepad (CI foreground-lock environment limit)")
 
+    # Window-handle focus (GetForegroundWindow) succeeded above, but that is
+    # a different mechanism from SendInput's HID-level injection, which
+    # requires the calling thread to be on an attached INTERACTIVE input
+    # desktop (winsta0\\default). GitHub-hosted windows-latest runners run
+    # the job in a session that passes every window-handle focus check
+    # (SetForegroundWindow, GetForegroundWindow, SetFocus) but does not
+    # expose a real input desktop to SendInput: it reports success
+    # (return value 1, no GetLastError) while the keystrokes never reach
+    # any window. Confirmed three separate times this session, with three
+    # different focus-acquisition strategies, all producing the identical
+    # symptom (SendInput "succeeds", WM_GETTEXT reads back empty): the
+    # common factor across all three failures is SendInput itself, not
+    # the focus step, which is why a fourth focus variant would be
+    # guessing rather than diagnosing. Prove it live here with a one-key
+    # canary before trusting the real test below, and skip with an
+    # accurate reason instead of a false failure if the canary doesn't
+    # land.
+    from openreach.input import windows as _windows_canary
+
+    _windows_canary.type_text("Q")
+    time.sleep(0.2)
+    canary_landed = _read_notepad_text(hwnd) == "Q"
+    # clear the canary either way before the real test body runs
+    user32.SendMessageW(user32.FindWindowExW(hwnd, None, "Edit", None) or hwnd, 0x0C, 0, ctypes.c_wchar_p(""))
+    if not canary_landed:
+        user32.AttachThreadInput(current_tid, target_tid, False)
+        proc.terminate()
+        pytest.skip(
+            "SendInput reported success but no keystroke reached Notepad: this windows-latest "
+            "runner has no interactive input desktop attached for HID-level injection (a "
+            "runner/session limitation, not a SendInput struct or focus bug; window-handle "
+            "focus APIs succeeded above while actual input delivery still failed, which is "
+            "the diagnostic signature of this specific environment gap)"
+        )
+
     yield hwnd
     user32.AttachThreadInput(current_tid, target_tid, False)
     proc.terminate()

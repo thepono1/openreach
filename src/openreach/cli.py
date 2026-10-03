@@ -71,6 +71,17 @@ def build_parser() -> argparse.ArgumentParser:
     for name in ("click", "right-click", "middle-click", "double-click", "triple-click", "move"):
         p = sub.add_parser(name, help=f"{name.replace('-', ' ').capitalize()} at X,Y")
         p.add_argument("xy", type=_parse_xy, nargs="?", help="X,Y coordinate; omit to act at the current position")
+        if name == "click":
+            p.add_argument(
+                "--verify",
+                action="store_true",
+                help=(
+                    "macOS only: read the real accessibility element at the target point before "
+                    "clicking, then confirm after clicking that the same element is still what's "
+                    "there (AXUIElementCopyElementAtPosition), instead of trusting the coordinate "
+                    "blindly. Adds 'target' and 'verified' to the JSON output."
+                ),
+            )
 
     p = sub.add_parser("drag", help="Drag from X,Y to X,Y")
     p.add_argument("start", type=_parse_xy)
@@ -199,12 +210,52 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps({"ok": False, "error": str(exc)}))
             return 1
 
+    if cmd == "click" and getattr(args, "verify", False):
+        return _run_verified_click(args, log_dir)
+
     # The destructive-key gate itself now lives in Backend.execute (the
     # single chokepoint every caller goes through, library or CLI), not
     # here. This keeps _build_action's force flag passed straight through.
     action = _build_action(args)
     result = Backend().execute(action)
     return _emit(result, log_dir=log_dir, action_name=cmd)
+
+
+def _run_verified_click(args: argparse.Namespace, log_dir: str | None) -> int:
+    """Click with before/after accessibility-tree confirmation that the
+    click actually landed on the thing at that point, not a coordinate
+    trusted blindly. macOS only today (no accessibility backend on the
+    other OSes yet); falls back to an ordinary click elsewhere, with
+    'verified: null' to make the lack of verification explicit rather
+    than silently claiming success.
+    """
+    backend = Backend()
+    x, y = args.xy if args.xy is not None else backend.execute(Action(name=ActionName.CURSOR_POSITION)).position
+
+    ax = get_accessibility_backend()
+    if ax is None:
+        result = backend.execute(Action(name=ActionName.LEFT_CLICK, coordinate=(x, y)))
+        payload = {"ok": result.ok, "error": result.error, "position": [x, y], "verified": None}
+        if log_dir:
+            _write_artifact(log_dir, "click", payload)
+        print(json.dumps(payload))
+        return 0 if result.ok else 1
+
+    target = ax.element_at(x, y)
+    result = backend.execute(Action(name=ActionName.LEFT_CLICK, coordinate=(x, y)))
+    verified = ax.verify_click_target(x, y, target) if target is not None else False
+
+    payload = {
+        "ok": result.ok,
+        "error": result.error,
+        "position": [x, y],
+        "target": _element_json(target) if target is not None else None,
+        "verified": verified,
+    }
+    if log_dir:
+        _write_artifact(log_dir, "click", payload)
+    print(json.dumps(payload))
+    return 0 if result.ok else 1
 
 
 def _element_json(e) -> dict:
