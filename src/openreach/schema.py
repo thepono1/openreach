@@ -39,6 +39,7 @@ class Action:
     scroll_direction: str | None = None
     scroll_amount: int | None = None
     duration: float | None = None
+    force: bool = False
 
 
 @dataclass

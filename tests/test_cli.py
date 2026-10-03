@@ -34,12 +34,14 @@ def test_position_command_prints_coordinates(capsys) -> None:
     assert len(payload["position"]) == 2
 
 
+@pytest.mark.live_input
 def test_move_command_reports_the_requested_position(capsys) -> None:
     code, payload = _run(capsys, ["move", "150,150"])
     assert code == 0
     assert payload["position"] == [150, 150]
 
 
+@pytest.mark.live_input
 def test_click_without_xy_succeeds(capsys) -> None:
     code, payload = _run(capsys, ["click"])
     assert code == 0
@@ -52,6 +54,7 @@ def test_bad_xy_format_is_a_cli_usage_error(capsys) -> None:
     assert exc.value.code != 0
 
 
+@pytest.mark.live_input
 def test_type_command_succeeds(capsys) -> None:
     code, payload = _run(capsys, ["type", "hello"])
     assert code == 0
@@ -102,6 +105,7 @@ def test_destructive_key_combo_proceeds_with_force(capsys, monkeypatch) -> None:
     assert calls == ["cmd+q"]
 
 
+@pytest.mark.live_input
 def test_non_destructive_key_is_not_blocked(capsys) -> None:
     code, payload = _run(capsys, ["key", "shift"])
     assert code == 0

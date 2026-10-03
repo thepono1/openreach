@@ -21,7 +21,6 @@ from pathlib import Path
 
 from openreach.backend import Backend
 from openreach.grounding import find_text, wait_for_text
-from openreach.safety import is_destructive_key
 from openreach.schema import Action, ActionName, ActionResult
 
 
@@ -147,15 +146,9 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(payload))
         return 0 if result.ok else 1
 
-    if cmd == "key" and is_destructive_key(args.keys) and not args.force:
-        payload = {
-            "ok": False,
-            "error": f"refusing destructive key combo {args.keys!r} without --force "
-            "(quit, force-quit, lock, and log-out combos are blocked by default)",
-        }
-        print(json.dumps(payload))
-        return 1
-
+    # The destructive-key gate itself now lives in Backend.execute (the
+    # single chokepoint every caller goes through, library or CLI), not
+    # here. This keeps _build_action's force flag passed straight through.
     action = _build_action(args)
     result = Backend().execute(action)
     return _emit(result, log_dir=log_dir, action_name=cmd)
@@ -181,7 +174,7 @@ def _build_action(args: argparse.Namespace) -> Action:
     if cmd == "type":
         return Action(name=ActionName.TYPE, text=args.text)
     if cmd == "key":
-        return Action(name=ActionName.KEY, text=args.keys)
+        return Action(name=ActionName.KEY, text=args.keys, force=args.force)
     if cmd == "wait":
         return Action(name=ActionName.WAIT, duration=args.seconds)
     raise ValueError(f"unhandled command: {cmd}")

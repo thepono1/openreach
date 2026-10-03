@@ -9,6 +9,7 @@ dependencies = [
     "pyautogui>=0.9.54",
     "mss>=9.0.1",
     "pillow>=10.0.0",
+    "pyobjc-framework-Quartz>=10.0; sys_platform == 'darwin'",
 ]
 
 [project.scripts]
@@ -27,3 +28,6 @@ packages = ["src/openreach"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "live_input: sends real mouse/keyboard input to the desktop running the test; skipped locally unless OPENREACH_ALLOW_LIVE_INPUT=1 (see tests/conftest.py)",
+]

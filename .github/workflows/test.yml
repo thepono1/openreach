@@ -11,6 +11,11 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    env:
+      # This runner is disposable, unlike a developer's own machine, so the
+      # full suite (including tests that click/type/scroll for real) runs
+      # here by default. See tests/conftest.py.
+      OPENREACH_ALLOW_LIVE_INPUT: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

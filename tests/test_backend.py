@@ -94,6 +94,7 @@ def test_cursor_position_returns_coordinates(backend: Backend) -> None:
     assert x >= 0 and y >= 0
 
 
+@pytest.mark.live_input
 def test_mouse_move_actually_moves_cursor(backend: Backend, screen_size) -> None:
     target = _safe_point(screen_size, 100, 100)
     backend.execute(Action(name=ActionName.MOUSE_MOVE, coordinate=target))
@@ -101,6 +102,7 @@ def test_mouse_move_actually_moves_cursor(backend: Backend, screen_size) -> None
     assert result.position == target
 
 
+@pytest.mark.live_input
 def test_mouse_move_to_a_different_point_actually_changes_position(
     backend: Backend, screen_size
 ) -> None:
@@ -123,6 +125,7 @@ def test_mouse_move_without_coordinate_fails_cleanly(backend: Backend) -> None:
 # --- clicks --------------------------------------------------------------
 
 
+@pytest.mark.live_input
 @pytest.mark.parametrize(
     "action_name",
     [
@@ -142,6 +145,7 @@ def test_click_variants_move_to_target_and_report_position(
     assert result.position == target
 
 
+@pytest.mark.live_input
 def test_click_without_coordinate_clicks_at_current_position(
     backend: Backend, screen_size
 ) -> None:
@@ -155,6 +159,7 @@ def test_click_without_coordinate_clicks_at_current_position(
 # --- drag ------------------------------------------------------------------
 
 
+@pytest.mark.live_input
 def test_left_click_drag_ends_at_the_target_coordinate(
     backend: Backend, screen_size
 ) -> None:
@@ -178,6 +183,7 @@ def test_drag_without_target_coordinate_fails_cleanly(backend: Backend) -> None:
 # --- scroll ------------------------------------------------------------------
 
 
+@pytest.mark.live_input
 @pytest.mark.parametrize("direction", ["up", "down", "left", "right"])
 def test_scroll_in_every_direction_succeeds(backend: Backend, direction) -> None:
     result = backend.execute(
@@ -186,6 +192,7 @@ def test_scroll_in_every_direction_succeeds(backend: Backend, direction) -> None
     assert result.ok
 
 
+@pytest.mark.live_input
 def test_scroll_defaults_to_down_with_no_args(backend: Backend) -> None:
     result = backend.execute(Action(name=ActionName.SCROLL))
     assert result.ok
@@ -211,6 +218,7 @@ def test_key_without_text_fails_cleanly(backend: Backend) -> None:
     assert "text" in (result.error or "")
 
 
+@pytest.mark.live_input
 def test_key_single_key_succeeds(backend: Backend) -> None:
     result = backend.execute(Action(name=ActionName.KEY, text="shift"))
     assert result.ok
@@ -246,6 +254,7 @@ def test_unsupported_action_fails_cleanly(backend: Backend) -> None:
     assert result.error is not None
 
 
+@pytest.mark.live_input
 def test_every_result_is_a_result_object_never_a_raised_exception(backend: Backend) -> None:
     for name in ActionName:
         result = backend.execute(Action(name=name))

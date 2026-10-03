@@ -1,7 +1,11 @@
 """The OS automation implementation. pyautogui plus mss works unmodified on
-macOS, Windows, and Linux (X11; Wayland needs ydotool, see README). Native
-per-OS backends (accessibility-tree grounding, etc.) are a later, documented
-extension point behind the same Backend interface, not a blocker to shipping.
+macOS, Windows, and Linux (X11; Wayland needs ydotool, see README) for
+mouse and screenshot actions. Keyboard actions (type/key) use a native
+per-OS backend where one exists (openreach.input), falling back to
+pyautogui where it doesn't yet; pyautogui's own keyboard chord handling has
+a confirmed reliability bug on macOS (see openreach/input/macos.py).
+Accessibility-tree grounding is a later, documented extension point behind
+the same Backend interface, not a blocker to shipping.
 """
 
 from __future__ import annotations
@@ -13,18 +17,34 @@ import mss
 import pyautogui
 from PIL import Image
 
+from openreach.input import get_native_input
+from openreach.safety import is_destructive_key
 from openreach.schema import Action, ActionName, ActionResult
 
 pyautogui.FAILSAFE = True
 pyautogui.PAUSE = 0.01
 
+_native_input = get_native_input()
+
 
 class Backend:
     """Executes one Action against the live desktop and returns an
     ActionResult. Stateless between calls; the harness owns the loop.
+
+    The destructive-key safety gate lives HERE, not in the CLI, so every
+    caller goes through it. An earlier version only checked in cli.py;
+    any direct `Backend().execute(...)` call (library use, a future
+    executor.py chokepoint, a test) bypassed it entirely. Fail-closed by
+    construction, not by convention.
     """
 
     def execute(self, action: Action) -> ActionResult:
+        if action.name == ActionName.KEY and action.text and is_destructive_key(action.text) and not action.force:
+            return ActionResult(
+                ok=False,
+                error=f"refusing destructive key combo {action.text!r} without force "
+                "(quit, force-quit, lock, and log-out combos are blocked by default)",
+            )
         try:
             handler = getattr(self, f"_do_{action.name.value}")
         except AttributeError:
@@ -99,14 +119,24 @@ class Backend:
     def _do_type(self, action: Action) -> ActionResult:
         if not action.text:
             return ActionResult(ok=False, error="type requires text")
-        pyautogui.typewrite(action.text, interval=0.01)
+        if _native_input is not None:
+            _native_input.type_text(action.text)
+        else:
+            pyautogui.typewrite(action.text, interval=0.01)
         return ActionResult(ok=True)
 
     def _do_key(self, action: Action) -> ActionResult:
         if not action.text:
             return ActionResult(ok=False, error="key requires text")
-        keys = action.text.lower().split("+")
-        pyautogui.hotkey(*keys)
+        if _native_input is not None:
+            _native_input.press_chord(action.text)
+        else:
+            # pyautogui's hotkey() has a real reliability bug on at least
+            # macOS (modifier flags not set on the key event itself, so a
+            # chord can race and misfire as a bare keypress). Used only
+            # where no native backend exists yet; see GAP_ANALYSIS.md.
+            keys = action.text.lower().split("+")
+            pyautogui.hotkey(*keys)
         return ActionResult(ok=True)
 
     def _do_wait(self, action: Action) -> ActionResult:
