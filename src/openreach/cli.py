@@ -255,7 +255,7 @@ def _run_verified_click(args: argparse.Namespace, log_dir: str | None) -> int:
 
     target = ax.element_at(x, y)
     result = backend.execute(Action(name=ActionName.LEFT_CLICK, coordinate=(x, y)))
-    verified = ax.verify_click_target(x, y, target) if target is not None else False
+    verified = _verify_with_settle(ax, x, y, target) if target is not None else False
 
     payload = {
         "ok": result.ok,
@@ -268,6 +268,25 @@ def _run_verified_click(args: argparse.Namespace, log_dir: str | None) -> int:
         _write_artifact(log_dir, "click", payload)
     print(json.dumps(payload))
     return 0 if result.ok else 1
+
+
+def _verify_with_settle(ax, x: int, y: int, target, retries: int = 3, delay: float = 0.1) -> bool:
+    """A click can legitimately change what's at the clicked point an
+    instant later (a menu opens over it, a button becomes disabled, the
+    row it was in gets removed), which would make a single immediate
+    verify_click_target call read as a false negative even though the
+    click hit exactly the right thing. Retry briefly before concluding
+    the click missed, rather than reporting the UI's own settle time as
+    a cursor-accuracy failure. Stops as soon as one check succeeds; never
+    masks a real miss, since a genuinely wrong click won't start matching
+    partway through a 300ms window.
+    """
+    for attempt in range(retries):
+        if ax.verify_click_target(x, y, target):
+            return True
+        if attempt < retries - 1:
+            time.sleep(delay)
+    return False
 
 
 def _run_verified_drag(args: argparse.Namespace, log_dir: str | None) -> int:

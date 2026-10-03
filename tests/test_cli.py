@@ -292,3 +292,50 @@ def test_drag_verify_false_when_a_different_element_is_found_at_the_end_point(ca
     assert payload["verified"] is False
     assert payload["dragged"]["title"] == "box-1"
     assert payload["landed"]["title"] == "box-2"
+
+
+# --- cursor-accuracy: click --verify settles through transient misses ------
+
+
+def test_click_verify_settles_through_a_transient_false_negative(capsys, monkeypatch) -> None:
+    """The point under the cursor can legitimately change for a moment
+    right after a real, correct click (a menu opens, a row animates out).
+    verify_click_target failing once must not be reported as a missed
+    click if a retry within the settle window finds the real target
+    again.
+    """
+    import openreach.cli as cli_module
+
+    class FakeAx:
+        def __init__(self):
+            self.calls = 0
+
+        def element_at(self, x, y):
+            return FakeElement("AXButton", "Submit")
+
+        def verify_click_target(self, x, y, expected):
+            self.calls += 1
+            return self.calls >= 2  # first check misses, second settles true
+
+    monkeypatch.setattr(cli_module, "get_accessibility_backend", lambda: FakeAx())
+    monkeypatch.setattr(cli_module.time, "sleep", lambda _: None)
+    code, payload = _run(capsys, ["click", "100,100", "--verify"])
+    assert code == 0
+    assert payload["verified"] is True
+
+
+def test_click_verify_reports_false_after_exhausting_settle_retries(capsys, monkeypatch) -> None:
+    import openreach.cli as cli_module
+
+    class FakeAx:
+        def element_at(self, x, y):
+            return FakeElement("AXButton", "Submit")
+
+        def verify_click_target(self, x, y, expected):
+            return False  # never settles; a real miss
+
+    monkeypatch.setattr(cli_module, "get_accessibility_backend", lambda: FakeAx())
+    monkeypatch.setattr(cli_module.time, "sleep", lambda _: None)
+    code, payload = _run(capsys, ["click", "100,100", "--verify"])
+    assert code == 0
+    assert payload["verified"] is False
