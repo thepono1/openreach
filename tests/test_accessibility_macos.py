@@ -17,7 +17,7 @@ pytestmark = pytest.mark.skipif(sys.platform != "darwin", reason="macOS-only nat
 
 def _osascript(script: str, timeout: float = 10) -> str:
     try:
-        result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=timeout)
+        result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=timeout, check=False)
     except subprocess.TimeoutExpired:
         pytest.skip("no GUI session available to drive TextEdit (expected on a hosted CI runner)")
     return result.stdout.strip()

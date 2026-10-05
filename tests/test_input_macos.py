@@ -16,7 +16,7 @@ pytestmark = pytest.mark.skipif(sys.platform != "darwin", reason="macOS-only nat
 
 
 def _osascript(script: str, timeout: float = 10) -> str:
-    result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=timeout)
+    result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=timeout, check=False)
     return result.stdout.strip()
 
 
@@ -52,13 +52,13 @@ def test_a_stuck_modifier_is_cleared_before_typing() -> None:
     subsequent keystroke into a Cmd-chord. Simulates that stuck state on
     purpose, then confirms type_text's defensive clear actually clears it.
     """
-    import Quartz
-
-    from openreach.input import macos
-
     # Simulate the stuck state: post a Cmd keydown with no matching keyup,
     # exactly what an interrupted pyautogui.hotkey() call left behind.
     import time
+
+    import Quartz
+
+    from openreach.input import macos
 
     stuck = Quartz.CGEventCreateKeyboardEvent(None, 0, True)
     Quartz.CGEventSetType(stuck, Quartz.kCGEventFlagsChanged)

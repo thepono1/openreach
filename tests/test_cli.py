@@ -65,7 +65,7 @@ def test_wait_command_actually_waits(capsys) -> None:
     import time
 
     start = time.monotonic()
-    code, payload = _run(capsys, ["wait", "0.2"])
+    code, _ = _run(capsys, ["wait", "0.2"])
     elapsed = time.monotonic() - start
     assert code == 0
     assert elapsed >= 0.18
@@ -75,7 +75,7 @@ def test_wait_command_actually_waits(capsys) -> None:
 
 
 def test_destructive_key_combo_is_refused_without_force(capsys) -> None:
-    code, payload = _run(capsys, ["key", "cmd+q"])
+    code, payload = _run(capsys, ["key", "cmd+q", "--any-app"])
     assert code == 1
     assert payload["ok"] is False
     assert "force" in payload["error"].lower()
@@ -92,14 +92,14 @@ def test_destructive_key_combo_proceeds_with_force(capsys, monkeypatch) -> None:
     calls: list[str] = []
 
     class StubBackend:
-        def execute(self, action):  # noqa: ANN001
+        def execute(self, action):
             calls.append(action.text)
             from openreach.schema import ActionResult
 
             return ActionResult(ok=True)
 
     monkeypatch.setattr(cli_module, "Backend", StubBackend)
-    code, payload = _run(capsys, ["key", "cmd+q", "--force"])
+    code, payload = _run(capsys, ["key", "cmd+q", "--force", "--any-app"])
     assert code == 0
     assert payload["ok"] is True
     assert calls == ["cmd+q"]
@@ -130,7 +130,7 @@ def test_log_dir_writes_an_artifact_file(capsys, tmp_path) -> None:
 
 
 def test_find_text_command_runs_and_returns_json(capsys) -> None:
-    code, payload = _run(capsys, ["find-text", "zzz_unlikely_to_exist_on_screen_zzz"])
+    _, payload = _run(capsys, ["find-text", "zzz_unlikely_to_exist_on_screen_zzz"])
     assert "ok" in payload
     assert "matches" in payload
     assert payload["matches"] == []
@@ -149,7 +149,7 @@ def test_wait_for_times_out_cleanly_on_text_that_will_never_appear(capsys) -> No
 def test_find_command_runs_and_returns_json(capsys) -> None:
     import sys
 
-    code, payload = _run(capsys, ["find", "--role", "AXWindow"])
+    _, payload = _run(capsys, ["find", "--role", "AXWindow"])
     assert "ok" in payload
     if sys.platform != "darwin":
         assert payload["ok"] is False
@@ -339,3 +339,63 @@ def test_click_verify_reports_false_after_exhausting_settle_retries(capsys, monk
     code, payload = _run(capsys, ["click", "100,100", "--verify"])
     assert code == 0
     assert payload["verified"] is False
+
+
+# --- focus guard on pointer actions (--expect-app) --------------------------
+# A mismatch must refuse BEFORE any mouse event is posted. These run against
+# the real desktop, so they only pass if the refusal really short-circuits.
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["click", "5,5", "--expect-app", "zzz_not_the_real_app_zzz"],
+        ["right-click", "5,5", "--expect-app", "zzz_not_the_real_app_zzz"],
+        ["double-click", "5,5", "--expect-app", "zzz_not_the_real_app_zzz"],
+        ["drag", "5,5", "6,6", "--expect-app", "zzz_not_the_real_app_zzz"],
+    ],
+)
+def test_expect_app_refuses_pointer_action_on_mismatch(capsys, argv) -> None:
+    code, payload = _run(capsys, argv)
+    assert code == 1
+    assert payload["ok"] is False
+    assert "zzz_not_the_real_app_zzz" in payload["error"]
+
+
+def test_expect_app_refuses_scroll_on_mismatch(capsys) -> None:
+    code, payload = _run(capsys, ["scroll", "down", "--expect-app", "zzz_not_the_real_app_zzz"])
+    assert code == 1
+    assert payload["ok"] is False
+
+
+# --- mandatory focus check for keyboard input (type/key) ---------------------
+
+
+def test_type_refuses_without_expect_app(capsys) -> None:
+    code, payload = _run(capsys, ["type", "should never land"])
+    assert code == 1
+    assert payload["ok"] is False
+    assert "--expect-app" in payload["error"]
+
+
+def test_key_refuses_without_expect_app(capsys) -> None:
+    code, payload = _run(capsys, ["key", "a"])
+    assert code == 1
+    assert payload["ok"] is False
+    assert "--expect-app" in payload["error"]
+
+
+def test_any_app_is_an_explicit_override_for_type(monkeypatch, capsys) -> None:
+    calls = []
+    import openreach.backend as backend_mod
+
+    monkeypatch.setattr(backend_mod.Backend, "execute", lambda self, action: calls.append(action) or _ok())
+    code, payload = _run(capsys, ["type", "hi", "--any-app"])
+    assert code == 0 and payload["ok"] is True
+    assert len(calls) == 1
+
+
+def _ok():
+    from openreach.schema import ActionResult
+
+    return ActionResult(ok=True)

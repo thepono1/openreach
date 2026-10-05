@@ -129,9 +129,9 @@ and the full backend/CLI suite both still pass.
 | Gap | Why it's not closed | Mirroir's equivalent |
 |---|---|---|
 | Windows/Linux accessibility-tree backend | Only macOS is implemented. Windows needs UI Automation (comtypes or pywinauto per the dual-model plan); Linux needs AT-SPI2 (PyGObject `Atspi`). Neither can be verified live from this Mac; CI is the only check. | Same ceiling: "the mirrored surface exposes zero child accessibility elements." |
-| Windows/Linux keyboard chord reliability | Only macOS has a native input backend; Windows/Linux still use pyautogui's hotkey/typewrite, unverified for the same class of bug found and fixed on macOS this session. | N/A |
+| Windows/Linux keyboard chord reliability | Native backends exist for Windows (SendInput) and Linux (XTEST) and are dispatched through the same path as macOS. Verified only in CI, never watched on a real desktop. | N/A |
 | No ref persistence across CLI calls | `tree`/`find`/`press` re-walk the tree every invocation (no session, no cached element handles). Correct and simple, but means a long flow re-walks a complex app's tree repeatedly. The dual-model plan's phase-6 `serve` daemon is the fix if this proves too slow in practice; not measured yet. | N/A |
-| No focus/settle verification before acting | Live testing repeatedly typed into the wrong window because nothing checked the target app was actually frontmost first. Planned (`focus.py`, a pre-action gate) but not built yet. | mirroir's #9, #17, #18: "ready is a claim, the screenshot is the evidence." |
+| Focus gate | `type` and `key` now REQUIRE `--expect-app <app>` (override: `--any-app`, explicit). Pointer actions (click family, move, drag, scroll) accept `--expect-app`, opt-in. The check waits up to 1s for a window that is still switching in, then refuses; a mismatch refuses before any event posts. Matching is a case-insensitive name substring. Windows/Linux frontmost detection is unverified on real hardware. | mirroir's #9, #17, #18: "ready is a claim, the screenshot is the evidence." |
 | No deterministic skill/replay format | openreach is a primitive-level CLI, one command per call; there is no flow-recording or compiled-replay layer. | mirroir has one, and its own data shows compiled replay is a **regression** (0/5 vs 5/5), so this is deliberately not ported. |
 | No screen-classification before grounding | `find_text` has no concept of "is this an icon grid vs a toolbar" the way mirroir's tap-offset heuristic does; openreach does not apply positional heuristics at all, so this class of bug (#4) does not exist here, but neither does the convenience it buys. | N/A, intentionally not replicated. |
 | No prompt-injection handling in the harness layer | openreach returns raw OCR text; it is the calling harness's job to treat that text as untrusted data, not an instruction. Not enforceable at the tool layer. | Documented in mirroir's safety.md as the caller's responsibility too. |
@@ -153,3 +153,10 @@ and the full backend/CLI suite both still pass.
 OSWorld (`xlang-ai/OSWorld`) is the real benchmark for this class of tool, ~370 tasks against real
 VM snapshots. It has not been run against openreach yet; doing so is the next real measurement, not
 unit-test coverage.
+
+## Next steps (owner: the next session that touches this repo)
+
+- **Live verification:** run a supervised pass on macOS with `OPENREACH_ALLOW_LIVE_INPUT=1` before trusting the chord and focus behaviour. Needs a human at the keyboard.
+- **Commit:** the changes since the last commit are uncommitted. Commit after the live pass.
+- **Scroll default:** scroll is still opt-in for `--expect-app`. Decide whether it should follow the type/key rule.
+- **Wayland:** still unwired; needs `ydotool` or the portal path.

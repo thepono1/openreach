@@ -13,7 +13,7 @@ from PIL import Image, ImageDraw
 
 from openreach.backend import Backend
 from openreach.grounding import find_text, wait_for_text
-from openreach.schema import Action, ActionName
+from openreach.schema import ActionName
 
 
 def _ocr_ready() -> bool:
@@ -96,7 +96,7 @@ def test_wait_for_times_out_without_spinning_forever() -> None:
 
 def test_wait_for_fails_cleanly_when_screenshot_itself_fails(monkeypatch) -> None:
     class BrokenBackend(Backend):
-        def execute(self, action):  # noqa: ANN001
+        def execute(self, action):
             if action.name == ActionName.SCREENSHOT:
                 from openreach.schema import ActionResult
 
