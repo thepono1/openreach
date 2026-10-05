@@ -16,7 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 import ApplicationServices as AX
-import Quartz
+import Quartz  # noqa: F401  (kept: loads the CoreGraphics bindings this module relies on)
 
 # A tree walk can explode on a complex app (Chrome, Xcode); cap it so a find
 # call can't hang or return an unusable firehose.

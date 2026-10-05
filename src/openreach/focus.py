@@ -107,3 +107,21 @@ def require_frontmost(expected_substring: str) -> None:
         raise FocusMismatchError(f"could not determine the frontmost app to verify it contains {expected_substring!r}")
     if expected_substring.lower() not in actual.lower():
         raise FocusMismatchError(f"expected frontmost app containing {expected_substring!r}, got {actual!r}")
+
+
+def require_frontmost_settled(expected_substring: str, timeout: float = 1.0, interval: float = 0.1) -> None:
+    """Like require_frontmost, but tolerates a window that is still switching
+    in: polls for up to `timeout` seconds and only raises if the expected app
+    never becomes frontmost. Fail-closed: a timeout is still a refusal.
+    """
+    import time
+
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            require_frontmost(expected_substring)
+            return
+        except FocusMismatchError as exc:
+            if time.monotonic() >= deadline:
+                raise FocusMismatchError(f"{exc} (still not frontmost after {timeout:.1f}s)") from exc
+            time.sleep(interval)

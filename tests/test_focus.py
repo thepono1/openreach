@@ -49,3 +49,24 @@ def test_require_frontmost_is_case_insensitive() -> None:
         pytest.skip("frontmost_app_name() returned None on this platform")
     require_frontmost(name.upper())
     require_frontmost(name.lower())
+
+
+def test_settled_check_waits_for_window_switch(monkeypatch) -> None:
+    from openreach import focus
+
+    answers = iter(["Finder", "Finder", "TextEdit"])
+    monkeypatch.setattr(focus, "frontmost_app_name", lambda: next(answers))
+    import time
+
+    monkeypatch.setattr(time, "sleep", lambda s: None)
+    focus.require_frontmost_settled("textedit", timeout=5.0, interval=0.01)
+
+
+def test_settled_check_still_refuses_after_timeout(monkeypatch) -> None:
+    import pytest
+
+    from openreach import focus
+
+    monkeypatch.setattr(focus, "frontmost_app_name", lambda: "Finder")
+    with pytest.raises(focus.FocusMismatchError, match="still not frontmost"):
+        focus.require_frontmost_settled("textedit", timeout=0.05, interval=0.01)

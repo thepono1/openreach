@@ -71,6 +71,11 @@ def build_parser() -> argparse.ArgumentParser:
     for name in ("click", "right-click", "middle-click", "double-click", "triple-click", "move"):
         p = sub.add_parser(name, help=f"{name.replace('-', ' ').capitalize()} at X,Y")
         p.add_argument("xy", type=_parse_xy, nargs="?", help="X,Y coordinate; omit to act at the current position")
+        p.add_argument(
+            "--expect-app",
+            default=None,
+            help="Refuse to act unless the frontmost app's name contains this substring",
+        )
         if name == "click":
             p.add_argument(
                 "--verify",
@@ -87,6 +92,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("start", type=_parse_xy)
     p.add_argument("end", type=_parse_xy)
     p.add_argument(
+        "--expect-app",
+        default=None,
+        help="Refuse to drag unless the frontmost app's name contains this substring",
+    )
+    p.add_argument(
         "--verify",
         action="store_true",
         help=(
@@ -100,6 +110,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("direction", choices=["up", "down", "left", "right"])
     p.add_argument("--amount", type=int, default=3)
     p.add_argument("--at", type=_parse_xy, default=None)
+    p.add_argument(
+        "--expect-app",
+        default=None,
+        help="Refuse to scroll unless the frontmost app's name contains this substring",
+    )
 
     p = sub.add_parser("type", help="Type literal text")
     p.add_argument("text")
@@ -107,6 +122,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--expect-app",
         default=None,
         help="Refuse to type unless the frontmost app's name contains this substring",
+    )
+    p.add_argument(
+        "--any-app",
+        action="store_true",
+        help="Explicitly allow typing without a focus check (no --expect-app). Use only when the target is truly unknown.",
     )
 
     p = sub.add_parser("key", help='Press a key or chord, e.g. "cmd+c"')
@@ -116,6 +136,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--expect-app",
         default=None,
         help="Refuse to send unless the frontmost app's name contains this substring",
+    )
+    p.add_argument(
+        "--any-app",
+        action="store_true",
+        help="Explicitly allow a key press without a focus check (no --expect-app). Use only when the target is truly unknown.",
     )
 
     p = sub.add_parser("wait", help="Sleep for N seconds")
@@ -210,11 +235,22 @@ def main(argv: list[str] | None = None) -> int:
         return _run_accessibility_command(ax, cmd, args)
 
     expect_app = getattr(args, "expect_app", None)
+    if cmd in ("type", "key") and not expect_app and not getattr(args, "any_app", False):
+        print(
+            json.dumps(
+                {
+                    "ok": False,
+                    "error": f"{cmd} requires --expect-app <app name> so input cannot land in the wrong window; "
+                    "pass --any-app to override explicitly",
+                }
+            )
+        )
+        return 1
     if expect_app:
-        from openreach.focus import FocusMismatchError, require_frontmost
+        from openreach.focus import FocusMismatchError, require_frontmost_settled
 
         try:
-            require_frontmost(expect_app)
+            require_frontmost_settled(expect_app)
         except FocusMismatchError as exc:
             print(json.dumps({"ok": False, "error": str(exc)}))
             return 1
