@@ -49,3 +49,27 @@ def test_destructive_guard_blocks_aliases_and_supersets(combo: str) -> None:
 @pytest.mark.parametrize("combo", ["cmd+c", "ctrl+c", "q", "f4", "cmd+shift+s"])
 def test_destructive_guard_does_not_overblock(combo: str) -> None:
     assert is_destructive_key(combo) is False
+
+
+# --- fuzz: every spelling and ordering of a destructive chord is blocked -----
+
+
+@pytest.mark.parametrize(
+    "base",
+    [
+        ["cmd", "q"],
+        ["cmd", "alt", "esc"],
+        ["cmd", "shift", "q"],
+        ["cmd", "ctrl", "q"],
+        ["alt", "f4"],
+        ["win", "l"],
+        ["ctrl", "alt", "delete"],
+    ],
+)
+def test_destructive_chord_blocked_under_every_ordering_and_alias(base: list[str]) -> None:
+    import itertools
+
+    aliases = {"cmd": ["cmd", "command", "meta"], "ctrl": ["ctrl", "control"], "alt": ["alt", "option", "opt"], "win": ["win", "super"], "delete": ["delete", "del"]}
+    for order in itertools.permutations(base):
+        for combo in itertools.product(*[aliases.get(k, [k]) for k in order]):
+            assert is_destructive_key("+".join(combo)) is True, "+".join(combo)

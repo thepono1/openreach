@@ -106,3 +106,64 @@ def test_wait_for_fails_cleanly_when_screenshot_itself_fails(monkeypatch) -> Non
     result = wait_for_text("anything", timeout=1.0, backend=BrokenBackend())
     assert not result.ok
     assert "capture failure" in (result.error or "")
+
+
+# --- OCR accuracy on a fixed fixture (no live desktop needed) ----------------
+# Renders known text at known boxes, so the test asserts real coordinates and
+# real counts rather than only the response shape.
+
+
+def _render(lines: list[tuple[str, int, int]], size: tuple[int, int] = (600, 300)) -> bytes:
+    import io
+
+    from PIL import Image, ImageDraw, ImageFont
+
+    img = Image.new("RGB", size, "white")
+    draw = ImageDraw.Draw(img)
+    font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 36)
+    for text, x, y in lines:
+        draw.text((x, y), text, fill="black", font=font)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def _ocr_or_skip() -> None:
+    from openreach.grounding import _ocr_available
+
+    ok, err = _ocr_available()
+    if not ok:
+        pytest.skip(err or "OCR unavailable")
+
+
+def test_find_text_returns_the_real_coordinate_of_a_known_word() -> None:
+    _ocr_or_skip()
+    from openreach.grounding import find_text
+
+    png = _render([("Submit", 200, 120)])
+    result = find_text("submit", png)
+    assert result.ok is True
+    assert len(result.matches) == 1
+    x, y = result.matches[0].coordinate
+    # Word box starts at (200,120), roughly 170x45 px at size 36. The centre must land inside it.
+    assert 200 <= x <= 380 and 120 <= y <= 175
+
+
+def test_find_text_reports_two_matches_as_an_ambiguity_not_one() -> None:
+    _ocr_or_skip()
+    from openreach.grounding import find_text
+
+    png = _render([("Save", 50, 40), ("Save", 50, 200)])
+    result = find_text("save", png)
+    assert result.ok is True
+    assert len(result.matches) == 2
+
+
+def test_find_text_returns_no_matches_for_absent_text() -> None:
+    _ocr_or_skip()
+    from openreach.grounding import find_text
+
+    png = _render([("Submit", 200, 120)])
+    result = find_text("zzzabsent", png)
+    assert result.ok is True
+    assert result.matches == []

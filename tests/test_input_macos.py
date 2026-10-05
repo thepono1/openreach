@@ -148,3 +148,30 @@ def test_cmd_a_selects_all_not_a_literal_character(fresh_textedit_document) -> N
     )
     # "hello" is 5 characters; a real select-all reports a selection length of 5.
     assert selection_range.endswith(", 5"), f"selection did not cover the full string: {selection_range!r}"
+
+
+@pytest.mark.live_input
+def test_chord_leaves_no_modifier_stuck_at_os_level() -> None:
+    """A chord must not leave Cmd/Shift/Option/Control held system-wide after it
+    returns. Read the real HID modifier state after, not the return value.
+    """
+    import subprocess
+
+    import Quartz
+
+    from openreach.input import macos
+
+    subprocess.run(["osascript", "-e", 'tell application "TextEdit" to make new document'], check=False)
+    subprocess.run(["osascript", "-e", 'tell application "TextEdit" to activate'], check=False)
+    try:
+        macos.press_chord("cmd+a")
+        flags = Quartz.CGEventSourceFlagsState(Quartz.kCGEventSourceStateHIDSystemState)
+        held = flags & (
+            Quartz.kCGEventFlagMaskCommand
+            | Quartz.kCGEventFlagMaskShift
+            | Quartz.kCGEventFlagMaskAlternate
+            | Quartz.kCGEventFlagMaskControl
+        )
+        assert held == 0, f"modifier still held after chord: flags={flags:#x}"
+    finally:
+        subprocess.run(["osascript", "-e", 'tell application "TextEdit" to close every document saving no'], check=False)

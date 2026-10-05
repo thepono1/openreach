@@ -408,3 +408,48 @@ def _ok():
     from openreach.schema import ActionResult
 
     return ActionResult(ok=True)
+
+
+# --- focus loss mid-sequence: the next keystroke must be refused -------------
+
+
+def test_focus_switch_between_steps_refuses_the_next_type(monkeypatch, capsys) -> None:
+    import openreach.backend as backend_mod
+    from openreach import focus
+
+    sent = []
+    monkeypatch.setattr(backend_mod.Backend, "execute", lambda self, action: sent.append(action) or _ok())
+    # Step 1 sees TextEdit; then the user (or a popup) moves focus to Finder.
+    calls = {"n": 0}
+
+    def _frontmost() -> str:
+        calls["n"] += 1
+        return "TextEdit" if calls["n"] == 1 else "Finder"
+
+    monkeypatch.setattr(focus, "frontmost_app_name", _frontmost)
+    import time
+
+    monkeypatch.setattr(time, "sleep", lambda s: None)
+
+    code1, _ = _run(capsys, ["type", "step one", "--expect-app", "TextEdit"])
+    code2, payload2 = _run(capsys, ["type", "step two", "--expect-app", "TextEdit"])
+    assert code1 == 0
+    assert code2 == 1 and payload2["ok"] is False
+    assert [a.text for a in sent] == ["step one"], "second keystroke must never reach the backend"
+
+
+# --- permission-denied path gives a clear error, not a silent pass ----------
+
+
+@pytest.mark.parametrize("cmd", [["tree"], ["find", "--role", "AXButton"], ["press", "--role", "AXButton"]])
+def test_untrusted_accessibility_reports_a_clear_error(monkeypatch, capsys, cmd) -> None:
+    import openreach.cli as cli_mod
+
+    class _Untrusted:
+        def is_trusted(self) -> bool:
+            return False
+
+    monkeypatch.setattr(cli_mod, "get_accessibility_backend", lambda: _Untrusted())
+    code, payload = _run(capsys, cmd)
+    assert code == 1 and payload["ok"] is False
+    assert "Accessibility" in payload["error"]
