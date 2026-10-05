@@ -56,7 +56,13 @@ def test_bad_xy_format_is_a_cli_usage_error(capsys) -> None:
 
 @pytest.mark.live_input
 def test_type_command_succeeds(capsys) -> None:
-    code, payload = _run(capsys, ["type", "hello"])
+    # Focus TextEdit first so the mandatory --expect-app check can pass and the
+    # keystrokes land in a throwaway document, not whatever app is in front.
+    import subprocess
+
+    subprocess.run(["osascript", "-e", 'tell application "TextEdit" to make new document'], check=False)
+    subprocess.run(["osascript", "-e", 'tell application "TextEdit" to activate'], check=False)
+    code, payload = _run(capsys, ["type", "hello", "--expect-app", "TextEdit"])
     assert code == 0
     assert payload["ok"] is True
 
@@ -107,7 +113,10 @@ def test_destructive_key_combo_proceeds_with_force(capsys, monkeypatch) -> None:
 
 @pytest.mark.live_input
 def test_non_destructive_key_is_not_blocked(capsys) -> None:
-    code, payload = _run(capsys, ["key", "shift"])
+    import subprocess
+
+    subprocess.run(["osascript", "-e", 'tell application "TextEdit" to activate'], check=False)
+    code, payload = _run(capsys, ["key", "shift", "--expect-app", "TextEdit"])
     assert code == 0
     assert payload["ok"] is True
 
