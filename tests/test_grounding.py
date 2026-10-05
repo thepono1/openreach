@@ -159,7 +159,7 @@ def test_find_text_reports_two_matches_as_an_ambiguity_not_one() -> None:
     assert len(result.matches) == 2
 
 
-def test_find_text_returns_no_matches_for_absent_text() -> None:
+def test_fixture_absent_text_yields_no_matches() -> None:
     _ocr_or_skip()
     from openreach.grounding import find_text
 
